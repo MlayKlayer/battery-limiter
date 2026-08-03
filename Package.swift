@@ -17,5 +17,9 @@ let package = Package(
             name: "BatteryLimiterHelper",
             dependencies: ["BatteryLimiterShared"]
         ),
+        .testTarget(
+            name: "BatteryLimiterSharedTests",
+            dependencies: ["BatteryLimiterShared"]
+        ),
     ]
 )

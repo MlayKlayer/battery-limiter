@@ -24,6 +24,18 @@ struct MenuContentView: View {
         }
         .disabled(!model.enabled)
 
+        Picker("Resume at", selection: Binding(
+            get: { model.resumePercent },
+            set: { model.setResumePercent($0) }
+        )) {
+            Text("60%").tag(60)
+            Text("65%").tag(65)
+            Text("70%").tag(70)
+            Text("75%").tag(75)
+            Text("77%").tag(77)
+        }
+        .disabled(!model.enabled)
+
         Divider()
 
         Toggle("Launch at Login", isOn: Binding(

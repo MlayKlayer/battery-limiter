@@ -11,10 +11,17 @@ see **Limitations** below.
 ## What it does
 
 - Menu bar item showing live battery percentage.
-- Toggle to turn charge limiting on/off, and a picker for 80/85/90/95%.
+- Toggle to turn charge limiting on/off, a picker for 80/85/90/95%, and a
+  "Resume at" picker (60/65/70/75/77%) for the bottom of the charge band.
 - While plugged in and above the chosen limit, charging is paused (the SMC
-  `CH0B`/`CH0C` keys are set to inhibit charging). Below the limit, or on
-  battery, or with limiting off, charging is normal.
+  `CH0B`/`CH0C` keys are set to inhibit charging). On battery, or with
+  limiting off, charging is normal.
+- **Charging resumes at "Resume at", not at limit-minus-one.** Without that
+  deadband the pack would sit at the limit, lose a percent to self-discharge
+  or a load peak the adapter couldn't cover, charge straight back, and repeat
+  — a permanent 1% sawtooth. Each of those round trips is ~1% of a charge
+  cycle. The band converts that into a rare, shallow dip. Set it close to the
+  limit (77%) to stay topped up, or far from it (60%) for the fewest cycles.
 - A notification when the cap is first reached on a charge cycle.
 - Optional "Launch at Login".
 

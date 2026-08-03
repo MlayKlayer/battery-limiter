@@ -46,7 +46,14 @@ final class ChargeController {
         // "already applied" would leave charging uncapped until the next
         // state change. Only while enabled -- an idle helper with the limit
         // off stays cached and silent.
-        apply(inhibited: battery.percent >= config.targetPercent, reassert: true)
+        //
+        // lastInhibited doubles as the hysteresis state: it *is* the charge
+        // state currently applied to the hardware.
+        let inhibited = config.shouldInhibit(
+            percent: battery.percent,
+            currentlyInhibited: lastInhibited ?? false
+        )
+        apply(inhibited: inhibited, reassert: true)
     }
 
     private func apply(inhibited: Bool, reassert: Bool = false) {

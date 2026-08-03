@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
     @Published var pluggedIn: Bool = false
     @Published private(set) var enabled: Bool
     @Published private(set) var targetPercent: Int
+    @Published private(set) var resumePercent: Int
     @Published private(set) var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
 
     private var timer: Timer?
@@ -18,6 +19,7 @@ final class AppModel: ObservableObject {
         let config = ConfigStore.read()
         enabled = config.enabled
         targetPercent = config.targetPercent
+        resumePercent = config.resumePercent
         NotificationManager.requestAuthorizationIfNeeded()
         refreshBattery()
         timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
@@ -32,7 +34,12 @@ final class AppModel: ObservableObject {
     var statusText: String {
         guard enabled else { return "Not limiting" }
         guard pluggedIn else { return "On battery" }
-        return batteryPercent >= targetPercent ? "Charging paused at \(targetPercent)%" : "Charging to \(targetPercent)%"
+        if batteryPercent >= targetPercent { return "Charging paused at \(targetPercent)%" }
+        // Inside the deadband either state is legitimate depending on which
+        // way the charge is moving, and only the daemon knows which. Describe
+        // the band instead of guessing at it.
+        if batteryPercent > resumePercent { return "Holding \(resumePercent)–\(targetPercent)%" }
+        return "Charging to \(targetPercent)%"
     }
 
     func setEnabled(_ newValue: Bool) {
@@ -53,6 +60,12 @@ final class AppModel: ObservableObject {
         guard newValue != targetPercent else { return }
         targetPercent = newValue
         notifiedThisCycle = false
+        persistConfig()
+    }
+
+    func setResumePercent(_ newValue: Int) {
+        guard newValue != resumePercent else { return }
+        resumePercent = newValue
         persistConfig()
     }
 
@@ -84,7 +97,11 @@ final class AppModel: ObservableObject {
     }
 
     private func persistConfig() {
-        try? ConfigStore.write(LimiterConfig(enabled: enabled, targetPercent: targetPercent))
+        try? ConfigStore.write(LimiterConfig(
+            enabled: enabled,
+            targetPercent: targetPercent,
+            resumePercent: resumePercent
+        ))
     }
 
     private func refreshBattery() {
