@@ -17,11 +17,22 @@ see **Limitations** below.
   `CH0B`/`CH0C` keys are set to inhibit charging). On battery, or with
   limiting off, charging is normal.
 - **Charging resumes at "Resume at", not at limit-minus-one.** Without that
-  deadband the pack would sit at the limit, lose a percent to self-discharge
-  or a load peak the adapter couldn't cover, charge straight back, and repeat
-  — a permanent 1% sawtooth. Each of those round trips is ~1% of a charge
-  cycle. The band converts that into a rare, shallow dip. Set it close to the
-  limit (77%) to stay topped up, or far from it (60%) for the fewest cycles.
+  deadband the pack sits at the limit, sheds a percent, charges straight back,
+  and repeats — a permanent sawtooth pinned at the top of the range.
+
+  The drain is real and measured, not theoretical: on an M3 Air (4522 mAh
+  pack) held at an 80% cap on AC, the battery sat perfectly inert at 0 mA
+  while idle, then discharged at **−47 to −517 mA under build load**, losing
+  71 mAh in 18 minutes (~237 mAh/h, ~5%/h). A 30W adapter can't cover this
+  machine's peaks, so the battery covers the difference even while plugged in.
+
+  Be clear on what the band does and doesn't buy. It does **not** reduce total
+  charge throughput — if a load pulls *n* mAh out, *n* mAh goes back in
+  whatever the band width, so cycle count accrues the same either way. What it
+  buys is a lower time-averaged state of charge, which is what actually drives
+  calendar aging, plus far fewer charge-circuit transitions. Set it close to
+  the limit (77%) to stay topped up for unplugging, or far from it (60%) to
+  hold the average charge lower.
 - A notification when the cap is first reached on a charge cycle.
 - Optional "Launch at Login".
 
