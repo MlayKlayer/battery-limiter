@@ -77,6 +77,19 @@ To build/run from Xcode instead: `open Package.swift`, select the
 built and bundled via the script above to actually install — Xcode's Run
 button only launches the menu bar app on its own.)
 
+## What's been verified vs. what hasn't
+
+Verified directly: it compiles (`swift build -c release`), the assembled
+`.app` is validly ad-hoc signed, and running it shows a live, correct battery
+percentage in the menu bar with no crashes over a short run.
+
+Not verified directly (no way to, without your admin password or clicking
+through the UI myself): the dropdown menu's Toggle/Picker rendering, and —
+the part that matters most — the privileged helper install and the actual
+SMC write. Notification delivery was tested and *does* currently fail when
+run ad-hoc outside `/Applications` (see Limitations); everything else in this
+section is you confirming the parts I couldn't.
+
 ## Confirming the limit is actually applied
 
 I can't test the privileged SMC write myself — it needs an interactive admin
@@ -98,6 +111,15 @@ sudo launchctl print system/com.batterylimiter.helper
 ```
 
 Logs (if anything goes wrong) are at `/var/log/com.batterylimiter.helper.log`.
+
+## Recovery
+
+If charging ever ends up stuck paused with no obvious cause (e.g. hard power
+loss before the daemon's shutdown handler ran, or the daemon got removed
+while it was actively inhibiting), the reliable fix is: make sure the app is
+running, confirm the helper is installed (see above), and turn **Limit
+Charging** off. The daemon writes the normal-charging state back within one
+poll cycle (~15s) — you don't need to hunt for a manual SMC reset.
 
 ## Uninstalling
 
@@ -123,7 +145,9 @@ deletes `/Library/LaunchDaemons/com.batterylimiter.helper.plist` and
   Gatekeeper will warn on first launch (see above). `UNUserNotificationCenter`
   authorization can also fail silently for an ad-hoc-signed app run from
   outside `/Applications` — if the "cap reached" notification never shows up,
-  move `BatteryLimiter.app` to `/Applications` and relaunch.
+  move `BatteryLimiter.app` to `/Applications` and relaunch. If you had
+  **Launch at Login** on before moving it, toggle it off and back on
+  afterward — `SMAppService.mainApp.register()` recorded the old path.
 - **No lid-closed/sleep handling.** The daemon only acts while it can read a
   battery/AC state (every 15s); it doesn't have BatFi's sleep-transition
   logic. This is fine for the "cap while I'm using it plugged in" use case

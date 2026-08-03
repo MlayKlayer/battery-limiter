@@ -46,7 +46,7 @@ enum HelperInstaller {
         chown root:wheel \(quote(plistPath))
         chmod 644 \(quote(plistPath))
         launchctl bootout system/\(label) 2>/dev/null || true
-        launchctl bootstrap system \(quote(plistPath))
+        launchctl bootstrap system \(quote(plistPath)) || { rm -f \(quote(plistPath)); exit 1; }
         """
         try runPrivileged(script, cleanup: [plistTemp])
     }

@@ -70,10 +70,14 @@ final class AppModel: ObservableObject {
     }
 
     func uninstallHelper() {
+        // Persist enabled=false *before* tearing down the daemon: KeepAlive
+        // means launchd respawns it between `kill TERM` and `bootout`, and a
+        // respawned instance must read `enabled: false` or it can briefly
+        // re-inhibit charging before the final SIGTERM resets it again.
+        enabled = false
+        persistConfig()
         do {
             try HelperInstaller.uninstall()
-            enabled = false
-            persistConfig()
         } catch {
             presentError("Couldn't remove the helper: \(error.localizedDescription)")
         }
