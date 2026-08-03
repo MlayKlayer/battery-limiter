@@ -43,6 +43,15 @@ struct MenuContentView: View {
             set: { model.setLaunchAtLogin($0) }
         ))
 
+        Picker("Menu Bar Style", selection: Binding(
+            get: { model.menuBarStyle },
+            set: { model.setMenuBarStyle($0) }
+        )) {
+            ForEach(MenuBarStyle.allCases) { style in
+                Text(style.label).tag(style)
+            }
+        }
+
         Button("Remove Helper…") {
             model.uninstallHelper()
         }

@@ -11,7 +11,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var targetPercent: Int
     @Published private(set) var resumePercent: Int
     @Published private(set) var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
+    @Published private(set) var menuBarStyle: MenuBarStyle
 
+    private static let styleKey = "menuBarStyle"
     private var timer: Timer?
     private var notifiedThisCycle = false
 
@@ -20,6 +22,8 @@ final class AppModel: ObservableObject {
         enabled = config.enabled
         targetPercent = config.targetPercent
         resumePercent = config.resumePercent
+        menuBarStyle = UserDefaults.standard.string(forKey: Self.styleKey)
+            .flatMap(MenuBarStyle.init(rawValue:)) ?? .outlined
         NotificationManager.requestAuthorizationIfNeeded()
         refreshBattery()
         timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
@@ -29,31 +33,9 @@ final class AppModel: ObservableObject {
 
     /// The menu bar shows the *cap*, not the live battery percentage -- macOS
     /// already shows that, and a second live number reads as something active
-    /// and alarming. Hollow (stroke-only) digits keep it looking like a static
-    /// threshold marker, and it fades when limiting is switched off.
-    ///
-    /// Drawn as an image because neither SwiftUI nor `NSAttributedString` in a
-    /// SwiftUI `Text` can stroke glyphs; `.strokeWidth` is an AppKit text
-    /// attribute, and a positive value means "outline, no fill".
+    /// and alarming rather than as a setting.
     var menuBarImage: NSImage {
-        let attributed = NSAttributedString(string: "\(targetPercent)%", attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
-            .strokeWidth: 3.5,
-            // isTemplate below discards colour and keeps alpha, so alpha here
-            // is what dims the off state.
-            .strokeColor: NSColor.black.withAlphaComponent(enabled ? 1 : 0.4),
-            .foregroundColor: NSColor.clear,
-        ])
-
-        // Pad so the stroke isn't clipped at the glyph bounds.
-        let textSize = attributed.size()
-        let size = NSSize(width: ceil(textSize.width) + 4, height: ceil(textSize.height))
-        let image = NSImage(size: size, flipped: false) { _ in
-            attributed.draw(at: NSPoint(x: 2, y: 0))
-            return true
-        }
-        image.isTemplate = true
-        return image
+        menuBarStyle.image(percent: targetPercent, dimmed: !enabled)
     }
 
     var statusText: String {
@@ -92,6 +74,12 @@ final class AppModel: ObservableObject {
         guard newValue != resumePercent else { return }
         resumePercent = newValue
         persistConfig()
+    }
+
+    func setMenuBarStyle(_ newValue: MenuBarStyle) {
+        guard newValue != menuBarStyle else { return }
+        menuBarStyle = newValue
+        UserDefaults.standard.set(newValue.rawValue, forKey: Self.styleKey)
     }
 
     func setLaunchAtLogin(_ newValue: Bool) {
