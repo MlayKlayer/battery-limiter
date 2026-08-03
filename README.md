@@ -21,21 +21,25 @@ simplest lever on that.
 - Apple Silicon Mac (M1 or later). No Intel support.
 - macOS 13 or later. Verified on macOS 14.5; see [Limitations](#limitations)
   for a known breakage on 15.5+.
-- Xcode or the Command Line Tools (`xcode-select --install`) — you build it
-  yourself.
 
 ## Install
 
+Download the `.zip` from the
+[latest release](https://github.com/MlayKlayer/battery-limiter/releases/latest),
+unzip it, and drag `BatteryLimiter.app` to your Applications folder.
+
+Then unblock it once — macOS quarantines anything downloaded from the web, and
+this app isn't notarized (see [why](#why-the-unblock-step)):
+
 ```sh
-git clone https://github.com/MlayKlayer/battery-limiter.git
-cd battery-limiter
-./Scripts/install.sh
+xattr -dr com.apple.quarantine /Applications/BatteryLimiter.app
 ```
 
-That builds the app, copies it to `/Applications`, and launches it. An
-outlined percentage appears in your menu bar.
+Prefer not to use Terminal? Double-click the app, let macOS refuse, then open
+**System Settings → Privacy & Security**, scroll down, and click **Open
+Anyway**. Same result.
 
-Then, in the menu bar item:
+Now launch it. An outlined percentage appears in your menu bar. Then:
 
 1. Turn on **Limit Charging** and pick a percentage. macOS asks for your admin
    password **once** — that installs the helper daemon. Approve it.
@@ -44,10 +48,29 @@ Then, in the menu bar item:
 
 After that first prompt, changing the limit never prompts again.
 
-Building it yourself is what keeps this painless: Gatekeeper only quarantines
-files the OS *downloads*, so there's no right-click-to-Open dance and no
-"unidentified developer" wall. Don't distribute the built `.app` as a
-download — it's ad-hoc signed and Gatekeeper will block it on arrival.
+### Why the unblock step
+
+Apple only lets an app launch cleanly from the internet if it's **notarized**,
+which requires a paid Apple Developer account ($99/year). This project doesn't
+have one, so the app is ad-hoc signed and macOS treats it as unidentified.
+
+The unblock is a one-time action and it doesn't weaken anything system-wide —
+it clears the quarantine flag on this app only. But you are, correctly, being
+asked to extend trust to a binary from the internet that installs a **root
+daemon**. If you'd rather not, build it yourself instead; the source is right
+here and it's the same result.
+
+### Build from source
+
+```sh
+git clone https://github.com/MlayKlayer/battery-limiter.git
+cd battery-limiter
+./Scripts/install.sh
+```
+
+Builds the app, copies it to `/Applications`, and launches it. Needs Xcode or
+the Command Line Tools (`xcode-select --install`). Nothing quarantines a
+locally built app, so there's no unblock step on this path.
 
 ## Usage
 
@@ -192,6 +215,7 @@ manual SMC reset.
 swift build -c release     # build
 swift test                 # run the unit tests
 ./Scripts/build_app.sh     # assemble the .app without installing
+./Scripts/release.sh       # assemble + zip for a GitHub release, with checksum
 ```
 
 **Rebuilding does not update an installed daemon.** The installer skips itself
@@ -208,12 +232,12 @@ running. Use **Remove Helper…**, then re-enable **Limit Charging**.
   predates that. On newer macOS the keys may simply stop working; the daemon
   logs the failure and falls back to normal charging rather than doing
   anything unsafe.
-- **Not notarized or Developer ID signed.** Ad-hoc signed only. Invisible if
-  you build locally; blocking if you download a prebuilt copy.
-  `UNUserNotificationCenter` can also fail silently for an ad-hoc-signed app
-  outside `/Applications`, which is why the installer puts it there. If you
-  move the app afterward and had Launch at Login on, toggle it off and back on
-  — the old path was recorded.
+- **Not notarized or Developer ID signed.** Ad-hoc signed only, so a
+  downloaded copy needs the one-time [unblock step](#why-the-unblock-step).
+  Building locally avoids it entirely. `UNUserNotificationCenter` can also fail
+  silently for an ad-hoc-signed app outside `/Applications`, which is why it
+  belongs there. If you move the app afterward and had Launch at Login on,
+  toggle it off and back on — the old path was recorded.
 - **No sleep-transition handling.** The daemon only acts while it can read
   battery state every 15s. A charge crossing the limit while the machine is
   fully asleep may take up to ~15s after wake to correct.

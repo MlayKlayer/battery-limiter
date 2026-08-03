@@ -3,3 +3,6 @@
 .swiftpm/
 *.xcodeproj/xcuserdata/
 BatteryLimiter.app/
+
+# Release artifacts
+*.zip
