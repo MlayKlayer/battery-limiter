@@ -12,8 +12,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var resumePercent: Int
     @Published private(set) var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @Published private(set) var menuBarStyle: MenuBarStyle
+    @Published private(set) var menuBarColor: MenuBarColor
 
     private static let styleKey = "menuBarStyle"
+    private static let colorKey = "menuBarColor"
     private var timer: Timer?
     private var notifiedThisCycle = false
 
@@ -24,6 +26,8 @@ final class AppModel: ObservableObject {
         resumePercent = config.resumePercent
         menuBarStyle = UserDefaults.standard.string(forKey: Self.styleKey)
             .flatMap(MenuBarStyle.init(rawValue:)) ?? .outlined
+        menuBarColor = UserDefaults.standard.string(forKey: Self.colorKey)
+            .flatMap(MenuBarColor.init(rawValue:)) ?? .automatic
         NotificationManager.requestAuthorizationIfNeeded()
         refreshBattery()
         timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
@@ -35,7 +39,7 @@ final class AppModel: ObservableObject {
     /// already shows that, and a second live number reads as something active
     /// and alarming rather than as a setting.
     var menuBarImage: NSImage {
-        menuBarStyle.image(percent: targetPercent, dimmed: !enabled)
+        menuBarStyle.image(percent: targetPercent, dimmed: !enabled, color: menuBarColor)
     }
 
     var statusText: String {
@@ -80,6 +84,12 @@ final class AppModel: ObservableObject {
         guard newValue != menuBarStyle else { return }
         menuBarStyle = newValue
         UserDefaults.standard.set(newValue.rawValue, forKey: Self.styleKey)
+    }
+
+    func setMenuBarColor(_ newValue: MenuBarColor) {
+        guard newValue != menuBarColor else { return }
+        menuBarColor = newValue
+        UserDefaults.standard.set(newValue.rawValue, forKey: Self.colorKey)
     }
 
     func setLaunchAtLogin(_ newValue: Bool) {

@@ -54,9 +54,13 @@ download — it's ad-hoc signed and Gatekeeper will block it on arrival.
 The menu bar shows **your cap, not the current charge** — macOS already
 displays the live percentage, and a second live number next to it just reads
 as something urgent. By default it's drawn as hollow outlined digits so it
-looks like the static threshold it is — pick a different look under **Menu Bar
-Style**. Whichever you choose fades to semi-transparent whenever **Limit
-Charging** is switched off.
+looks like the static threshold it is — **Style** and **Color** change that,
+and combine freely. Whichever you pick fades to semi-transparent whenever
+**Limit Charging** is switched off.
+
+Leaving **Color** on Automatic keeps the readout adaptive: macOS draws it as a
+template image and tints it to match a light or dark menu bar. Choosing an
+explicit colour opts out of that, so it stays that colour in both.
 
 The menu itself shows the current state and gives you:
 
@@ -66,7 +70,8 @@ The menu itself shows the current state and gives you:
 | **Limit to** | 80 / 85 / 90 / 95% — where charging stops. |
 | **Resume at** | 60 / 65 / 70 / 75 / 77% — where charging starts again. |
 | **Launch at Login** | Starts the app automatically. |
-| **Menu Bar Style** | How the cap is drawn: Outlined, Solid, Rounded, Monospaced, Light, or Number only. |
+| **Style** | How the cap is drawn: Outlined, Solid, Rounded, Monospaced, Light, or Number only. |
+| **Color** | Automatic (adapts to light/dark) or red / orange / yellow / green / blue / purple. Combines with any style. |
 | **Remove Helper…** | Uninstalls the root daemon (asks for your password). |
 
 The limit is enforced by the daemon, not the app, so it keeps working even if

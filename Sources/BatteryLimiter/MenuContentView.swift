@@ -43,12 +43,21 @@ struct MenuContentView: View {
             set: { model.setLaunchAtLogin($0) }
         ))
 
-        Picker("Menu Bar Style", selection: Binding(
+        Picker("Style", selection: Binding(
             get: { model.menuBarStyle },
             set: { model.setMenuBarStyle($0) }
         )) {
             ForEach(MenuBarStyle.allCases) { style in
                 Text(style.label).tag(style)
+            }
+        }
+
+        Picker("Color", selection: Binding(
+            get: { model.menuBarColor },
+            set: { model.setMenuBarColor($0) }
+        )) {
+            ForEach(MenuBarColor.allCases) { color in
+                Text(color.label).tag(color)
             }
         }
 

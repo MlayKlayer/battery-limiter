@@ -1,8 +1,8 @@
 import AppKit
 
-/// How the cap is drawn in the menu bar. Purely cosmetic, so it lives in
+/// How the cap is drawn in the menu bar. Purely cosmetic, so these live in
 /// UserDefaults rather than the shared config file -- the root daemon has no
-/// use for it.
+/// use for them.
 enum MenuBarStyle: String, CaseIterable, Identifiable {
     case outlined
     case solid
@@ -24,7 +24,7 @@ enum MenuBarStyle: String, CaseIterable, Identifiable {
         }
     }
 
-    private var font: NSFont {
+    fileprivate var font: NSFont {
         switch self {
         case .outlined: return .systemFont(ofSize: 11, weight: .semibold)
         case .solid: return .systemFont(ofSize: 12, weight: .regular)
@@ -42,12 +42,61 @@ enum MenuBarStyle: String, CaseIterable, Identifiable {
         guard let descriptor = base.fontDescriptor.withDesign(.rounded) else { return base }
         return NSFont(descriptor: descriptor, size: size) ?? base
     }
+}
 
-    /// `dimmed` is the "Limit Charging is off" state. The image is a template,
-    /// so the menu bar supplies the colour for light/dark and reads the alpha
-    /// baked in here for the dimming.
-    func image(percent: Int, dimmed: Bool) -> NSImage {
-        let ink = NSColor.black.withAlphaComponent(dimmed ? 0.4 : 1)
+/// Menu bar tint. Any style can take any colour.
+enum MenuBarColor: String, CaseIterable, Identifiable {
+    case automatic
+    case red
+    case orange
+    case yellow
+    case green
+    case blue
+    case purple
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .automatic: return "Automatic"
+        case .red: return "Red"
+        case .orange: return "Orange"
+        case .yellow: return "Yellow"
+        case .green: return "Green"
+        case .blue: return "Blue"
+        case .purple: return "Purple"
+        }
+    }
+
+    /// nil means "let the menu bar decide": the image is marked as a template
+    /// and macOS tints it black or white to match light/dark. Picking a real
+    /// colour opts out of that, so it stays that colour in both appearances.
+    ///
+    /// Pinned to sRGB because the system colours are appearance-dependent, and
+    /// a non-template image is rendered once rather than re-resolved when the
+    /// user switches theme.
+    var ink: NSColor? {
+        let color: NSColor
+        switch self {
+        case .automatic: return nil
+        case .red: color = .systemRed
+        case .orange: color = .systemOrange
+        case .yellow: color = .systemYellow
+        case .green: color = .systemGreen
+        case .blue: color = .systemBlue
+        case .purple: color = .systemPurple
+        }
+        return color.usingColorSpace(.sRGB) ?? color
+    }
+}
+
+extension MenuBarStyle {
+    /// `dimmed` is the "Limit Charging is off" state.
+    func image(percent: Int, dimmed: Bool, color: MenuBarColor) -> NSImage {
+        let isTemplate = color.ink == nil
+        // Template images carry only alpha, so the black here is a mask, not a
+        // colour -- the menu bar supplies the real one.
+        let ink = (color.ink ?? .black).withAlphaComponent(dimmed ? 0.4 : 1)
         var attributes: [NSAttributedString.Key: Any] = [.font: font]
 
         if self == .outlined {
@@ -70,7 +119,7 @@ enum MenuBarStyle: String, CaseIterable, Identifiable {
             attributed.draw(at: NSPoint(x: 2, y: 0))
             return true
         }
-        image.isTemplate = true
+        image.isTemplate = isTemplate
         return image
     }
 }
