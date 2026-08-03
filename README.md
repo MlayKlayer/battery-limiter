@@ -49,20 +49,30 @@ library (`BatteryLimiterShared`). `Scripts/build_app.sh` builds it and
 assembles the `.app` bundle by hand. Xcode can still open `Package.swift`
 directly if you'd rather build/debug there.
 
-## First-run setup
+## Install
 
-1. Build the app (see below).
-2. Launch `BatteryLimiter.app`. Since it isn't notarized, Gatekeeper will
-   refuse to open it via double-click the first time — right-click it and
-   choose **Open**, then confirm. (Launching it directly from Xcode, or
-   running the binary from Terminal, skips this entirely since Gatekeeper's
-   quarantine flag is only set on files downloaded/quarantined by the OS.)
-3. Click the menu bar item, turn on **Limit Charging**, and pick a
-   percentage. The first time you enable it, macOS will prompt for your
-   admin password once — that installs the helper daemon. Approve it.
-4. Pick **Launch at Login** if you want it to start automatically.
+```sh
+./Scripts/install.sh
+```
 
-## Building
+Builds the app, copies it to `/Applications`, and launches it. Look for the
+battery percentage in your menu bar. Then:
+
+1. Click the menu bar item, turn on **Limit Charging**, and pick a
+   percentage. The first time you enable it, macOS prompts for your admin
+   password once — that installs the helper daemon. Approve it.
+2. Pick **Launch at Login** if you want it to start automatically.
+
+That's the whole setup. Because you build it locally, Gatekeeper never
+quarantines it, so there's no right-click-to-Open dance — the quarantine flag
+is only set on files the OS downloads.
+
+**Always launch the `/Applications` copy.** `Scripts/install.sh` leaves the
+build output at the repo root too; if you launch that one,
+`SMAppService.mainApp.register()` records the wrong path and Launch at Login
+will point at a copy you may later delete.
+
+## Building without installing
 
 ```sh
 ./Scripts/build_app.sh
@@ -71,6 +81,12 @@ directly if you'd rather build/debug there.
 This runs `swift build -c release`, assembles `BatteryLimiter.app`, and
 ad-hoc signs it (`codesign --sign -`) — required for `SMAppService.mainApp`
 login-item registration to work at all, even without a Developer ID.
+
+**If you've already installed the helper and then rebuild**, the new helper
+binary is *not* picked up automatically — `install()` is skipped whenever the
+LaunchDaemon plist already exists, so the old daemon keeps running. Use
+**Remove Helper…** in the menu, then turn **Limit Charging** back on to
+reinstall.
 
 To build/run from Xcode instead: `open Package.swift`, select the
 `BatteryLimiter` scheme, and Run. (The helper daemon target still needs to be
@@ -126,8 +142,9 @@ poll cycle (~15s) — you don't need to hunt for a manual SMC reset.
 Use **Remove Helper…** in the menu, which runs another admin-authenticated
 script that terminates the daemon, resets charging to normal first, then
 deletes `/Library/LaunchDaemons/com.batterylimiter.helper.plist` and
-`/Library/PrivilegedHelperTools/com.batterylimiter.helper`. Then just delete
-`BatteryLimiter.app` and, if you enabled it, remove it from Login Items.
+`/Library/PrivilegedHelperTools/com.batterylimiter.helper`. Then quit the app,
+delete `/Applications/BatteryLimiter.app`, and — if you enabled it — remove it
+from Login Items.
 
 ## Limitations
 
@@ -142,12 +159,13 @@ deletes `/Library/LaunchDaemons/com.batterylimiter.helper.plist` and
   macOS 14.5 (Darwin 23.5.0), which predates that breakage, so the keys
   should work here as implemented.
 - **Not notarized / not signed with a Developer ID.** Ad-hoc signed only.
-  Gatekeeper will warn on first launch (see above). `UNUserNotificationCenter`
-  authorization can also fail silently for an ad-hoc-signed app run from
-  outside `/Applications` — if the "cap reached" notification never shows up,
-  move `BatteryLimiter.app` to `/Applications` and relaunch. If you had
-  **Launch at Login** on before moving it, toggle it off and back on
-  afterward — `SMAppService.mainApp.register()` recorded the old path.
+  This is invisible as long as you build locally (nothing quarantines it),
+  but you can't hand the `.app` to someone else as a download without
+  Gatekeeper blocking it. `UNUserNotificationCenter` authorization can also
+  fail silently for an ad-hoc-signed app run from outside `/Applications` —
+  which is why `Scripts/install.sh` puts it there. If you move the app
+  afterward and had **Launch at Login** on, toggle it off and back on —
+  `SMAppService.mainApp.register()` recorded the old path.
 - **No lid-closed/sleep handling.** The daemon only acts while it can read a
   battery/AC state (every 15s); it doesn't have BatFi's sleep-transition
   logic. This is fine for the "cap while I'm using it plugged in" use case

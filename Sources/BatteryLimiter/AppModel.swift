@@ -103,6 +103,9 @@ final class AppModel: ObservableObject {
     }
 
     private func presentError(_ message: String) {
+        // LSUIElement app: without this the modal can open behind whatever
+        // has focus after the admin dialog closes, and reads as a hang.
+        NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.messageText = "Battery Limiter"
         alert.informativeText = message
