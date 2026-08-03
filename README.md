@@ -1,3 +1,5 @@
+<img src="icon.png" alt="" width="128" align="right">
+
 # Battery Limiter
 
 A menu bar app for Apple Silicon Macs that stops charging at 80/85/90/95%, so
