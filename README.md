@@ -32,8 +32,8 @@ cd battery-limiter
 ./Scripts/install.sh
 ```
 
-That builds the app, copies it to `/Applications`, and launches it. A battery
-percentage appears in your menu bar.
+That builds the app, copies it to `/Applications`, and launches it. An
+outlined percentage appears in your menu bar.
 
 Then, in the menu bar item:
 
@@ -51,7 +51,13 @@ download — it's ad-hoc signed and Gatekeeper will block it on arrival.
 
 ## Usage
 
-The menu shows the current state and gives you:
+The menu bar shows **your cap, not the current charge** — macOS already
+displays the live percentage, and a second live number next to it just reads
+as something urgent. It's drawn as hollow outlined digits so it looks like the
+static threshold it is, and it fades to semi-transparent whenever **Limit
+Charging** is switched off.
+
+The menu itself shows the current state and gives you:
 
 | Control | What it does |
 |---|---|

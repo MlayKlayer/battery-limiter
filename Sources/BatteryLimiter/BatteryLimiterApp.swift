@@ -8,7 +8,7 @@ struct BatteryLimiterApp: App {
         MenuBarExtra {
             MenuContentView(model: model)
         } label: {
-            Text(model.menuBarTitle)
+            Image(nsImage: model.menuBarImage)
         }
         .menuBarExtraStyle(.menu)
     }

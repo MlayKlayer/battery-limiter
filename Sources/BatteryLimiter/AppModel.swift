@@ -27,8 +27,33 @@ final class AppModel: ObservableObject {
         }
     }
 
-    var menuBarTitle: String {
-        "\(batteryPercent)%"
+    /// The menu bar shows the *cap*, not the live battery percentage -- macOS
+    /// already shows that, and a second live number reads as something active
+    /// and alarming. Hollow (stroke-only) digits keep it looking like a static
+    /// threshold marker, and it fades when limiting is switched off.
+    ///
+    /// Drawn as an image because neither SwiftUI nor `NSAttributedString` in a
+    /// SwiftUI `Text` can stroke glyphs; `.strokeWidth` is an AppKit text
+    /// attribute, and a positive value means "outline, no fill".
+    var menuBarImage: NSImage {
+        let attributed = NSAttributedString(string: "\(targetPercent)%", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .strokeWidth: 3.5,
+            // isTemplate below discards colour and keeps alpha, so alpha here
+            // is what dims the off state.
+            .strokeColor: NSColor.black.withAlphaComponent(enabled ? 1 : 0.4),
+            .foregroundColor: NSColor.clear,
+        ])
+
+        // Pad so the stroke isn't clipped at the glyph bounds.
+        let textSize = attributed.size()
+        let size = NSSize(width: ceil(textSize.width) + 4, height: ceil(textSize.height))
+        let image = NSImage(size: size, flipped: false) { _ in
+            attributed.draw(at: NSPoint(x: 2, y: 0))
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 
     var statusText: String {
