@@ -93,24 +93,37 @@ To build/run from Xcode instead: `open Package.swift`, select the
 built and bundled via the script above to actually install — Xcode's Run
 button only launches the menu bar app on its own.)
 
-## What's been verified vs. what hasn't
+## What's been verified
 
-Verified directly: it compiles (`swift build -c release`), the assembled
-`.app` is validly ad-hoc signed, and running it shows a live, correct battery
-percentage in the menu bar with no crashes over a short run.
+End-to-end on an M-series Mac running macOS 14.5, with the helper installed
+and the limit set to 80%:
 
-Not verified directly (no way to, without your admin password or clicking
-through the UI myself): the dropdown menu's Toggle/Picker rendering, and —
-the part that matters most — the privileged helper install and the actual
-SMC write. Notification delivery was tested and *does* currently fail when
-run ad-hoc outside `/Applications` (see Limitations); everything else in this
-section is you confirming the parts I couldn't.
+```
+20:20:52  capacity=79  charging=Yes
+20:21:13  capacity=80  charging=Yes
+20:22:13  capacity=80  charging=No    <- inhibit applied
+```
 
-## Confirming the limit is actually applied
+Charging stopped at the limit and the battery stopped climbing. That covers
+the privileged helper install, the daemon running under launchd, the SMC
+write itself (the `CH0B`/`CH0C` keys exist and accept writes on 14.5), and
+the menu's Toggle/Picker. `/var/log/com.batterylimiter.helper.log` stayed
+empty throughout — every SMC write succeeded.
 
-I can't test the privileged SMC write myself — it needs an interactive admin
-password at install time, which isn't something I have access to. After you
-install the helper and plug in above your chosen limit, confirm it yourself:
+Also verified: it compiles, the `.app` is validly ad-hoc signed, the menu bar
+shows a live correct percentage, and the helper's failure-log throttle emits
+one line per failure run rather than one per poll.
+
+**Expect ~40–80 seconds of lag** between crossing the limit and charging
+actually stopping — the daemon polls every 15s, and the `IOPowerSources` API
+it reads lags `AppleSmartBattery` by a further several seconds. The overshoot
+is a fraction of a percent, so this is a latency note, not a defect.
+
+Still unverified: notification delivery (it failed when run ad-hoc from
+outside `/Applications`; untested from `/Applications`), and behaviour across
+sleep/wake.
+
+## Confirming the limit is applied on your machine
 
 ```sh
 ioreg -rn AppleSmartBattery | grep -i -e IsCharging -e CurrentCapacity -e MaxCapacity
