@@ -48,6 +48,21 @@ Now launch it. An outlined percentage appears in your menu bar. Then:
 
 After that first prompt, changing the limit never prompts again.
 
+### Upgrading from an earlier version
+
+Replacing the app does **not** replace the root daemon — the installer skips
+itself whenever the daemon is already present, so the old one keeps running.
+Since most of what the app does lives in that daemon, an upgrade looks applied
+while behaving like the version you replaced. After dragging in a new
+`BatteryLimiter.app`:
+
+1. **Remove Helper…** in the menu.
+2. Turn **Limit Charging** back on, and approve the admin prompt.
+
+Your settings are kept — they live in
+`/Library/Application Support/BatteryLimiter/config.json`, which this doesn't
+touch.
+
 ### Why the unblock step
 
 Apple only lets an app launch cleanly from the internet if it's **notarized**,
@@ -188,9 +203,12 @@ quitting the app.
 fails to charge, but a stuck adapter cut flattens the battery. So it's cleared
 on every path that could otherwise strand it — daemon startup (in case a
 previous instance was killed outright), shutdown, SMC failure, and immediately
-before the system sleeps. There's also a hard 20% floor and a 4-hour timeout,
-because the gauge that reports the stopping point is the same one that would be
-at fault if it froze.
+before the system sleeps. There's also a hard 20% floor, plus a backstop that
+gives up if the battery holds the same percent for four hours — because the
+gauge that reports the stopping point is the same one that would be at fault if
+it froze. That backstop measures *progress*, not elapsed time: draining only
+happens while the Mac is awake, so a slow overnight discharge is normal and a
+stuck one isn't.
 
 The daemon also registers for sleep/wake notifications, so the cap is
 re-asserted the instant the machine wakes rather than up to 15 seconds later.

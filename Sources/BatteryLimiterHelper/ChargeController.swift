@@ -12,15 +12,10 @@ final class ChargeController {
 
     private var lastAction: ChargeAction?
     private var loggedFailure = false
-    private var dischargingSince: Date?
+    private var dischargeProgress = DischargeProgress()
     private var loggedDischargeTimeout = false
     private var loggedConfigWriteFailure = false
     private let pollInterval: TimeInterval = 15
-    /// Give up on a discharge that never reaches its target. `dischargeStopsAt`
-    /// is the primary stop, but it reads the same gauge that would be at fault
-    /// if the gauge froze -- and that gauge only refreshes about once a minute
-    /// even when healthy. This is the backstop that doesn't trust it.
-    private let maxDischargeDuration: TimeInterval = 4 * 60 * 60
 
     private var rootPowerPort: io_connect_t = 0
     private var powerSourceSource: CFRunLoopSource?
@@ -130,6 +125,9 @@ final class ChargeController {
             // here drains the pack all night against an adapter the system has
             // been told to ignore. `lastAction` is deliberately kept so the
             // deadband doesn't forget which side of the band it was on.
+            // Sleeping stops the discharge dead, so none of the time about to
+            // pass counts against it.
+            clearDischargeWatchdog()
             let released = ChargeControl.releaseAdapter()
             log("sleep: \(stateDescription()), applied=\(lastAction?.rawValue ?? "none"), adapter cut cleared=\(released)")
             if !released {
@@ -169,14 +167,24 @@ final class ChargeController {
         }
         clearSpentRequests(&config, battery: battery)
 
-        let action = config.action(
+        let decided = config.action(
             percent: battery.percent,
             pluggedIn: battery.pluggedIn,
             // lastAction doubles as the hysteresis state: it *is* what is
             // currently applied to the hardware, discharge included.
             currentlyInhibited: lastAction.map { $0 != .normal } ?? false
         )
-        apply(dischargeWatchdog(action))
+        let action = dischargeWatchdog(decided, percent: battery.percent)
+
+        // A one-shot the watchdog gave up on has to be cleared, or it stays
+        // pending forever: the decision keeps coming back `.discharge`, the
+        // watchdog keeps overriding it, and pressing the button again changes
+        // nothing until the user unplugs.
+        if decided == .discharge, action != .discharge, config.dischargeNow {
+            config.dischargeNow = false
+            writeFlags(of: config)
+        }
+        apply(action)
     }
 
     /// `dischargeNow` and `topUp` are one-shot and scoped to this plug-in
@@ -197,10 +205,17 @@ final class ChargeController {
             cleared.dischargeNow = false
         }
         guard cleared != config else { return }
+        config = writeFlags(of: cleared)
+    }
 
-        var fresh = ConfigStore.readIfPresent() ?? cleared
-        fresh.dischargeNow = cleared.dischargeNow
-        fresh.topUp = cleared.topUp
+    /// Persists just the two daemon-owned flags. Re-reads immediately before
+    /// writing and carries nothing else over, so a user setting changed since
+    /// this tick began survives.
+    @discardableResult
+    private func writeFlags(of config: LimiterConfig) -> LimiterConfig {
+        var fresh = ConfigStore.readIfPresent() ?? config
+        fresh.dischargeNow = config.dischargeNow
+        fresh.topUp = config.topUp
         do {
             try ConfigStore.write(fresh)
             loggedConfigWriteFailure = false
@@ -213,25 +228,28 @@ final class ChargeController {
                 loggedConfigWriteFailure = true
             }
         }
-        config = fresh
+        return fresh
     }
 
-    private func dischargeWatchdog(_ action: ChargeAction) -> ChargeAction {
+    /// Stops a discharge that is going *nowhere* -- not one that is merely
+    /// slow. See `DischargeProgress` for the rule and why it isn't a plain
+    /// elapsed-time timeout.
+    private func dischargeWatchdog(_ action: ChargeAction, percent: Int) -> ChargeAction {
         guard action == .discharge else {
-            dischargingSince = nil
-            loggedDischargeTimeout = false
+            clearDischargeWatchdog()
             return action
         }
-        let since = dischargingSince ?? Date()
-        dischargingSince = since
-        guard Date().timeIntervalSince(since) < maxDischargeDuration else {
-            if !loggedDischargeTimeout {
-                logError("discharge ran \(Int(maxDischargeDuration / 3600))h without reaching target; stopping")
-                loggedDischargeTimeout = true
-            }
-            return .inhibit
+        guard dischargeProgress.isStalled(percent: percent, now: Date()) else { return action }
+        if !loggedDischargeTimeout {
+            logError("discharge sat at \(percent)% for \(Int(DischargeProgress.maxStall / 3600))h without dropping; stopping")
+            loggedDischargeTimeout = true
         }
-        return action
+        return .inhibit
+    }
+
+    private func clearDischargeWatchdog() {
+        dischargeProgress.clear()
+        loggedDischargeTimeout = false
     }
 
     private func apply(_ action: ChargeAction) {
