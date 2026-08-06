@@ -10,6 +10,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var enabled: Bool
     @Published private(set) var targetPercent: Int
     @Published private(set) var resumePercent: Int
+    @Published private(set) var dischargeEnabled: Bool
+    @Published private(set) var dischargeNow: Bool
+    @Published private(set) var topUp: Bool
+    @Published private(set) var stats: BatteryStats?
     @Published private(set) var launchAtLogin: Bool = SMAppService.mainApp.status == .enabled
     @Published private(set) var menuBarStyle: MenuBarStyle
     @Published private(set) var menuBarColor: MenuBarColor
@@ -24,33 +28,55 @@ final class AppModel: ObservableObject {
         enabled = config.enabled
         targetPercent = config.targetPercent
         resumePercent = config.resumePercent
+        dischargeEnabled = config.dischargeEnabled
+        dischargeNow = config.dischargeNow
+        topUp = config.topUp
         menuBarStyle = UserDefaults.standard.string(forKey: Self.styleKey)
             .flatMap(MenuBarStyle.init(rawValue:)) ?? .outlined
         menuBarColor = UserDefaults.standard.string(forKey: Self.colorKey)
             .flatMap(MenuBarColor.init(rawValue:)) ?? .automatic
         NotificationManager.requestAuthorizationIfNeeded()
-        refreshBattery()
+        refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshBattery() }
+            Task { @MainActor in self?.refresh() }
         }
     }
 
     /// The menu bar shows the *cap*, not the live battery percentage -- macOS
     /// already shows that, and a second live number reads as something active
-    /// and alarming rather than as a setting.
+    /// and alarming rather than as a setting. Top Up is the exception: while
+    /// it's running the cap in force really is 100.
     var menuBarImage: NSImage {
-        menuBarStyle.image(percent: targetPercent, dimmed: !enabled, color: menuBarColor)
+        menuBarStyle.image(
+            percent: topUp ? 100 : targetPercent,
+            dimmed: !enabled,
+            color: menuBarColor
+        )
     }
 
     var statusText: String {
         guard enabled else { return "Not limiting" }
+        if topUp { return pluggedIn ? "Topping up to 100%" : "Top Up ends on unplug" }
         guard pluggedIn else { return "On battery" }
+        if isDischarging { return "Discharging to \(targetPercent)%" }
         if batteryPercent >= targetPercent { return "Charging paused at \(targetPercent)%" }
         // Inside the deadband either state is legitimate depending on which
         // way the charge is moving, and only the daemon knows which. Describe
         // the band instead of guessing at it.
         if batteryPercent > resumePercent { return "Holding \(resumePercent)–\(targetPercent)%" }
         return "Charging to \(targetPercent)%"
+    }
+
+    /// Mirrors the daemon's own condition, so the menu doesn't claim a
+    /// discharge that the floor or the target has already stopped.
+    var isDischarging: Bool {
+        guard enabled, pluggedIn, !topUp, dischargeEnabled || dischargeNow else { return false }
+        return batteryPercent > max(targetPercent, LimiterConfig.dischargeFloor)
+    }
+
+    var canDischargeNow: Bool {
+        enabled && pluggedIn && !topUp
+            && batteryPercent > max(targetPercent, LimiterConfig.dischargeFloor)
     }
 
     func setEnabled(_ newValue: Bool) {
@@ -77,6 +103,29 @@ final class AppModel: ObservableObject {
     func setResumePercent(_ newValue: Int) {
         guard newValue != resumePercent else { return }
         resumePercent = newValue
+        persistConfig()
+    }
+
+    func setDischargeEnabled(_ newValue: Bool) {
+        guard newValue != dischargeEnabled else { return }
+        dischargeEnabled = newValue
+        persistConfig()
+    }
+
+    /// One-shot drain to the limit. The daemon clears the flag on unplug or
+    /// once the target is reached.
+    func startDischargeNow() {
+        dischargeNow = true
+        // Contradictory requests: Top Up is charging past the cap, this is
+        // draining to it. Whichever was pressed last wins outright.
+        topUp = false
+        persistConfig()
+    }
+
+    func toggleTopUp() {
+        topUp.toggle()
+        if topUp { dischargeNow = false }
+        notifiedThisCycle = false
         persistConfig()
     }
 
@@ -111,6 +160,8 @@ final class AppModel: ObservableObject {
         // respawned instance must read `enabled: false` or it can briefly
         // re-inhibit charging before the final SIGTERM resets it again.
         enabled = false
+        dischargeNow = false
+        topUp = false
         persistConfig()
         do {
             try HelperInstaller.uninstall()
@@ -123,8 +174,34 @@ final class AppModel: ObservableObject {
         try? ConfigStore.write(LimiterConfig(
             enabled: enabled,
             targetPercent: targetPercent,
-            resumePercent: resumePercent
+            resumePercent: resumePercent,
+            dischargeEnabled: dischargeEnabled,
+            dischargeNow: dischargeNow,
+            topUp: topUp
         ))
+    }
+
+    private func refresh() {
+        adoptDaemonChanges()
+        refreshBattery()
+        stats = BatteryReader.stats()
+    }
+
+    /// The daemon owns the end of a one-shot request -- it is the only part
+    /// still running when the user unplugs. Re-reading here is what makes the
+    /// menu notice that Top Up or a discharge has finished.
+    ///
+    /// Only these two fields are adopted. Every other setting is app-owned, and
+    /// taking them from disk would let a daemon write that crossed a user
+    /// change silently revert the control the user just touched.
+    ///
+    /// Deliberately `readIfPresent`: `read()` answers an unreadable file with
+    /// all-defaults, and adopting those would switch the limiter off and then
+    /// persist that on the next user action.
+    private func adoptDaemonChanges() {
+        guard let config = ConfigStore.readIfPresent() else { return }
+        dischargeNow = config.dischargeNow
+        topUp = config.topUp
     }
 
     private func refreshBattery() {
@@ -132,7 +209,9 @@ final class AppModel: ObservableObject {
         batteryPercent = status.percent
         pluggedIn = status.pluggedIn
 
-        if enabled, pluggedIn, status.percent >= targetPercent {
+        // Not while topping up: reaching the cap is the point of the override,
+        // not an event worth announcing.
+        if enabled, pluggedIn, !topUp, status.percent >= targetPercent {
             if !notifiedThisCycle {
                 NotificationManager.notifyCapReached(percent: targetPercent)
                 notifiedThisCycle = true

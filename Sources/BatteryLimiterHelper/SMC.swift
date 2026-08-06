@@ -1,3 +1,4 @@
+import BatteryLimiterShared
 import Foundation
 import IOKit
 
@@ -133,27 +134,68 @@ enum SMC {
     }
 }
 
-/// Apple Silicon charge-inhibit control. CH0B/CH0C set to 2 stops charging
-/// without discharging; 0 restores normal charging. Keys and values verified
-/// against the current (2026) BatFi source (github.com/rurza/BatFi).
+/// Apple Silicon charge control. CH0B/CH0C set to 2 stops charging without
+/// discharging; 0 restores normal charging. Keys and values verified against
+/// the current (2026) BatFi source (github.com/rurza/BatFi).
+///
+/// CH0I set to 1 cuts adapter input so the Mac runs off the battery even while
+/// plugged in; 0 restores it. Measured on an M3 Air / macOS 14.5: under six
+/// pinned cores the pack held flat with the adapter attached, and drew
+/// -827 mA (-54 mAh in 90s) with CH0I set, while ExternalConnected read false.
 enum ChargeControl {
     private static let inhibitB = FourCharCode(fromStaticString: "CH0B")
     private static let inhibitC = FourCharCode(fromStaticString: "CH0C")
+    private static let adapterDisable = FourCharCode(fromStaticString: "CH0I")
     private static var opened = false
 
-    static func setInhibited(_ inhibited: Bool) throws {
-        if !opened {
-            try SMC.open()
-            opened = true
-        }
-        let value: UInt8 = inhibited ? 2 : 0
+    private static func openIfNeeded() throws {
+        guard !opened else { return }
+        try SMC.open()
+        opened = true
+    }
+
+    static func apply(_ action: ChargeAction) throws {
+        try openIfNeeded()
+        let inhibit: UInt8 = action == .normal ? 0 : 2
         do {
-            try SMC.writeUInt8(inhibitB, value: value)
-            try SMC.writeUInt8(inhibitC, value: value)
+            try SMC.writeUInt8(inhibitB, value: inhibit)
+            try SMC.writeUInt8(inhibitC, value: inhibit)
+            try SMC.writeUInt8(adapterDisable, value: action == .discharge ? 1 : 0)
         } catch {
             SMC.close()
             opened = false
             throw error
+        }
+    }
+
+    /// Clears the adapter cut on its own, ahead of anything else. Used on every
+    /// path where the dangerous outcome is leaving the Mac running on battery:
+    /// daemon start (a previous instance may have been SIGKILLed mid-discharge,
+    /// which no handler can catch), shutdown, sleep, and SMC failure. A stuck
+    /// CH0B/CH0C only fails to charge; a stuck CH0I flattens the battery.
+    ///
+    /// Retries once against a fresh connection, and reports whether the write
+    /// landed. The connection is long-lived and held across arbitrarily many
+    /// sleep cycles, so a stale handle is the likely failure -- and on the sleep
+    /// path there is no next poll to recover on, because nothing runs again
+    /// until wake.
+    @discardableResult
+    static func releaseAdapter() -> Bool {
+        if writeAdapterDisable(0) { return true }
+        if opened {
+            SMC.close()
+            opened = false
+        }
+        return writeAdapterDisable(0)
+    }
+
+    private static func writeAdapterDisable(_ value: UInt8) -> Bool {
+        do {
+            try openIfNeeded()
+            try SMC.writeUInt8(adapterDisable, value: value)
+            return true
+        } catch {
+            return false
         }
     }
 }
