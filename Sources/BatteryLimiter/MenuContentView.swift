@@ -45,10 +45,12 @@ struct MenuContentView: View {
         ))
         .disabled(!model.enabled)
 
-        Button("Discharge Now") {
+        // Clicking dismisses the menu, so the press itself is invisible -- the
+        // only confirmation available is what this reads on the way back in.
+        Button(model.isDischarging ? "Discharging to \(model.targetPercent)%…" : "Discharge Now") {
             model.startDischargeNow()
         }
-        .disabled(!model.canDischargeNow)
+        .disabled(!model.canDischargeNow || model.isDischarging)
 
         Button(model.topUp ? "Cancel Top Up" : "Top Up to 100% Once") {
             model.toggleTopUp()

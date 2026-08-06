@@ -126,6 +126,26 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.action(percent: 100, pluggedIn: true, currentlyInhibited: false), .normal)
     }
 
+    func testSlowDischargeIsStillProgress() {
+        // Regression: the daemon's watchdog measured wall-clock time and killed
+        // a healthy overnight discharge that had only managed 86% -> 85%,
+        // because CH0I is cleared before every sleep and draining therefore
+        // only progresses while awake. The decision itself must keep asking for
+        // discharge the whole way down; giving up is the watchdog's call, and
+        // it now measures progress rather than elapsed time.
+        let config = LimiterConfig(
+            enabled: true, targetPercent: 80, resumePercent: 77, dischargeNow: true
+        )
+        for percent in stride(from: 86, through: 81, by: -1) {
+            XCTAssertEqual(
+                config.action(percent: percent, pluggedIn: true, currentlyInhibited: true),
+                .discharge,
+                "should still be discharging at \(percent)%"
+            )
+        }
+        XCTAssertEqual(config.action(percent: 80, pluggedIn: true, currentlyInhibited: true), .inhibit)
+    }
+
     // MARK: - Top Up
 
     func testTopUpOverridesBothCapAndDischarge() {
