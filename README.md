@@ -92,6 +92,10 @@ The menu itself shows the current state and gives you:
 | **Limit Charging** | Master on/off. |
 | **Limit to** | 80 / 85 / 90 / 95% — where charging stops. |
 | **Resume at** | 60 / 65 / 70 / 75 / 77% — where charging starts again. |
+| **Discharge to Limit** | Drain down to the limit whenever you're above it on AC. Off by default — see [Discharging](#discharging). |
+| **Discharge Now** | One-shot drain to the limit. Greyed out unless you're actually above it. |
+| **Top Up to 100% Once** | Ignore the limit and charge to full, once — see [Top Up](#top-up). |
+| **Stats** | Health, cycles, capacity, temperature, voltage, current, power, time remaining. |
 | **Launch at Login** | Starts the app automatically. |
 | **Style** | How the cap is drawn: Outlined, Solid, Rounded, Monospaced, Light, or Number only. |
 | **Color** | Automatic (adapts to light/dark) or red / orange / yellow / green / blue / purple. Combines with any style. |
@@ -124,6 +128,45 @@ and far fewer charge-circuit transitions.
 Set it near the limit (77%) to stay topped up for unplugging, or far from it
 (60%) to hold the average charge lower.
 
+### Discharging
+
+Capping charging only helps from the moment you turn it on. If you set 80%
+while the battery is at 100%, nothing brings it down — it just waits there
+until something drains it. **Discharge to Limit** closes that gap: while
+you're plugged in and above the limit, the Mac runs off the battery until it
+reaches the limit, then goes back to normal.
+
+It's **off by default**, deliberately. Draining 100% → 80% and later charging
+60% → 80% spends real cycle life, which only pays off against sitting at 100%
+for days. If you'd have unplugged within the hour anyway, leave it off and use
+**Discharge Now** when you actually want it.
+
+Two things to expect while it's running:
+
+- **macOS thinks you're on battery.** Discharging works by cutting adapter
+  input, so the power-source state flips — you'll see the battery icon change,
+  the display may dim, and battery idle-sleep timers apply.
+- **It's slow.** Measured on an M3 Air: −329 mA idle, so ~1%/9 min, or about
+  50 minutes for 86% → 80%. Under heavy load it's ~2.5× faster. It's a
+  background process, not a button you watch.
+
+Discharging never goes below the limit, never below 20% whatever the limit
+says, and stops the moment you unplug.
+
+### Top Up
+
+**Top Up to 100% Once** overrides the limit for one charge — for a flight, or
+a day away from power. Press it, the cap lifts, and the Mac charges to full.
+
+It stays in effect until you **unplug** (or press **Cancel Top Up**), not until
+it reaches 100%. That's the useful behaviour rather than the tidy one: if it
+ended at 100% while you were still plugged in, **Discharge to Limit** would
+immediately drain your fresh 100% back down to the cap, which defeats the
+entire point. Unplugging is the signal that you've actually left, so that's
+what ends it.
+
+It's a button, not a checkbox — it never persists across a trip.
+
 ## How it works
 
 Two parts:
@@ -135,10 +178,25 @@ Two parts:
 - **`com.batterylimiter.helper`** — a LaunchDaemon running as root, because
   writing SMC keys requires root. Every 15 seconds it reads that config plus
   live battery state and sets or clears the charge inhibit (`CH0B`/`CH0C` set
-  to `2` to stop charging, `0` for normal).
+  to `2` to stop charging, `0` for normal). Discharging additionally sets
+  `CH0I` to `1`, which cuts adapter input so the Mac runs off the battery.
 
 Splitting it this way means the app holds no privileges and the limit survives
 quitting the app.
+
+`CH0I` is the one key here that can do harm: a stuck charge inhibit merely
+fails to charge, but a stuck adapter cut flattens the battery. So it's cleared
+on every path that could otherwise strand it — daemon startup (in case a
+previous instance was killed outright), shutdown, SMC failure, and immediately
+before the system sleeps. There's also a hard 20% floor and a 4-hour timeout,
+because the gauge that reports the stopping point is the same one that would be
+at fault if it froze.
+
+The daemon also registers for sleep/wake notifications, so the cap is
+re-asserted the instant the machine wakes rather than up to 15 seconds later.
+Note the ceiling on this: **nothing runs while a Mac is asleep**, so the limit
+can't be actively *maintained* through sleep by any app — only re-applied on
+each wake, including the dark wakes macOS takes for maintenance.
 
 Without a paid Developer ID the usual ways to install a privileged helper
 (`SMJobBless`, `SMAppService.daemon`) are unavailable — both need a Developer
@@ -166,15 +224,37 @@ the privileged install, the daemon under launchd, and the SMC write itself —
 the keys exist and accept writes on 14.5. The daemon's log stayed empty, so
 every write succeeded.
 
-The charge-band logic is covered by unit tests (`swift test`) rather than
-hardware, since observing it live means waiting hours for the pack to drift.
+Discharging is confirmed on the same machine. Under six pinned cores the pack
+held perfectly flat with the adapter attached and drew −827 mA (−54 mAh in 90s)
+with `CH0I` set, while `ExternalConnected` read false — so the key genuinely
+moves power, rather than only changing what the system reports:
+
+```
+[A] adapter ON, loaded     0 mAh over 30s
+[B] adapter CUT, loaded  -54 mAh over 90s
+[C] adapter ON, loaded    -7 mAh over 30s   (gauge catching up)
+```
+
+The charge-band and discharge logic is covered by unit tests (`swift test`)
+rather than hardware, since observing it live means waiting hours for the pack
+to drift.
+
+Two hardware notes worth knowing if you read the raw registry yourself. The
+battery gauge refreshes roughly **once a minute**, not continuously — capacity
+and amperage sit perfectly still and then jump, so a stats readout can be up to
+a minute stale. And `AdapterDetails` is populated whenever a charger is
+physically attached even while `CH0I` is cutting its input, which is how the
+daemon tells "the user unplugged" apart from "I cut the adapter myself".
 
 **Expect ~40–80 seconds of lag** between crossing the limit and charging
 actually stopping: the daemon polls every 15s, and the `IOPowerSources` API
 lags `AppleSmartBattery` by several more. The overshoot is a fraction of a
 percent — a latency note, not a defect.
 
-Not verified: notification delivery, and behaviour across sleep/wake.
+Not verified: notification delivery, and behaviour across sleep/wake. The
+sleep/wake handler logs each transition to
+`/var/log/com.batterylimiter.helper.log`, so if the cap ever does slip
+overnight there's now a record of what the state was going in and coming out.
 
 ### Checking it yourself
 
