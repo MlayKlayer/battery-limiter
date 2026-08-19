@@ -114,13 +114,18 @@ struct MenuContentView: View {
         }
     }
 
+    /// Charging, this is time to the cap in force; discharging, time to empty.
+    /// One label either way -- which of the two is running is already spelled
+    /// out on the menu's top line.
+    ///
     /// macOS declines to estimate for a few minutes after any power transition,
     /// and reports nothing at all while the adapter is carrying the load.
     private func timeRemaining(_ stats: BatteryStats) -> String {
-        guard let seconds = stats.timeRemaining else { return "Time remaining  —" }
+        guard let seconds = stats.secondsUntil(cap: model.effectiveCap) else {
+            return "Time remaining  —"
+        }
         let minutes = Int(seconds) / 60
-        let label = stats.charging ? "Until full" : "Time remaining"
-        return "\(label)  \(minutes / 60)h \(minutes % 60)m"
+        return "Time remaining  \(minutes / 60)h \(minutes % 60)m"
     }
 }
 

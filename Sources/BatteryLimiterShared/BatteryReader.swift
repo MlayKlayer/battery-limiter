@@ -49,6 +49,21 @@ public struct BatteryStats {
     /// Power flowing in or out of the pack. Zero when the adapter is carrying
     /// the whole load, which is the normal state at the cap.
     public var watts: Double { abs(Double(milliamps)) * volts / 1000 }
+
+    /// Seconds until the interesting moment: the pack reaching `cap` while
+    /// charging, or running flat while discharging.
+    ///
+    /// macOS only ever estimates the trip to 100%, which is the wrong number
+    /// when a cap is in force -- so under a cap this is mAh-to-go over the live
+    /// amperage instead. That inherits the gauge's jumpiness and assumes the
+    /// current holds, which is true enough below the taper that starts near
+    /// full. Every other case is macOS's own estimate, unchanged.
+    public func secondsUntil(cap: Int) -> TimeInterval? {
+        guard charging, cap < 100, milliamps > 0 else { return timeRemaining }
+        let deficit = Double(maxCapacity) * Double(cap) / 100 - Double(currentCapacity)
+        guard deficit > 0 else { return nil }
+        return deficit / Double(milliamps) * 3600
+    }
 }
 
 /// Reads live battery state via the public IOKit power source APIs.
