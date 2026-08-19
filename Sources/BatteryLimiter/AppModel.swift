@@ -67,6 +67,10 @@ final class AppModel: ObservableObject {
         return "Charging to \(targetPercent)%"
     }
 
+    /// The cap actually in force. Top Up and a switched-off limiter both mean
+    /// the charge really is heading for 100.
+    var effectiveCap: Int { enabled && !topUp ? targetPercent : 100 }
+
     /// Mirrors the daemon's own condition, so the menu doesn't claim a
     /// discharge that the floor or the target has already stopped.
     var isDischarging: Bool {
