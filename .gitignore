@@ -6,3 +6,6 @@ BatteryLimiter.app/
 
 # Release artifacts
 *.zip
+
+# Private working notes, not published
+HANDOFF.md
