@@ -26,6 +26,9 @@ final class ChargeController {
         // handler can catch. Clearing on the way in means an adapter cut can
         // never outlive one daemon lifetime.
         ChargeControl.releaseAdapter()
+        // Which keys this Mac took. The set changed under macOS 15 and the old
+        // one fails silently, so pin it down in the log on the way in.
+        log("charge keys: \(ChargeControl.activeKeySet)")
         installSignalHandler()
         installSleepWakeHandler()
         installPowerSourceHandler()
