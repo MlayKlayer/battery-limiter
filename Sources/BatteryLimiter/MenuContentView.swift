@@ -134,9 +134,9 @@ struct MenuContentView: View {
 /// `.menuBarExtraStyle(.menu)` renders through NSMenu, and an NSMenuItem takes
 /// colour only from `attributedTitle`: `Button(role: .destructive)` and
 /// `.foregroundStyle(.red)` were both tried on the SwiftUI side and neither
-/// shows. SwiftUI exposes no handle on the menu it builds, but
-/// `didBeginTracking` hands over the NSMenu just before it draws, which is late
-/// enough to have the items and early enough to restyle one.
+/// shows -- re-checked on 15.7.9, both are still ignored. SwiftUI exposes no
+/// handle on the menu it builds, but `didBeginTracking` hands over the NSMenu
+/// just before it draws, which is early enough to restyle an item.
 ///
 /// Matching on the title is the weak point, so the Button reads its label from
 /// `title` here rather than repeating the string.
@@ -162,11 +162,18 @@ enum DestructiveMenuItem {
             queue: .main
         ) { notification in
             guard let menu = notification.object as? NSMenu else { return }
-            for item in menu.items where item.title == title {
-                item.attributedTitle = NSAttributedString(
-                    string: title,
-                    attributes: [.foregroundColor: ink]
-                )
+            // One main-queue hop, because macOS 15 changed *when* SwiftUI fills
+            // the menu: the notification now arrives with zero items and the
+            // items appear straight after, where 14 and earlier had them
+            // already. The hop lands after either order, and still early
+            // enough in the tracking loop to draw coloured rather than repaint.
+            DispatchQueue.main.async {
+                for item in menu.items where item.title == title {
+                    item.attributedTitle = NSAttributedString(
+                        string: title,
+                        attributes: [.foregroundColor: ink]
+                    )
+                }
             }
         }
     }
